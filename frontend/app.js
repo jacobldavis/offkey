@@ -30,7 +30,7 @@ let processorNode = null;
 let analyserNode  = null;
 let recording     = false;
 let capturedChunks = [];          // array of Float32Array chunks
-let capturedSampleCount = 0;
+let capturedSampleCount = 0;      // total samples captured so far
 let animFrameId   = null;
 let startTime     = 0;
 let recSampleRate = 44100;
@@ -166,11 +166,11 @@ function stopRecording() {
     processAudio();
 }
 
-// ═════════════════════════════════════════════════════════
-//  Audio Processing  →  Spectral Hash
-// ═════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════
+//  Audio Processing  →  Send to Backend for Spectral Hash
+// ═══════════════════════════════════════════════════════════
 
-function processAudio() {
+async function processAudio() {
     // Merge chunks into one contiguous Float32Array
     const totalLen = capturedChunks.reduce((n, c) => n + c.length, 0);
     const samples  = new Float32Array(totalLen);
@@ -187,130 +187,42 @@ function processAudio() {
     // Build WAV blob
     currentWavBlob = samplesToWav(samples, recSampleRate);
 
-    // Quantise samples to 16-bit PCM and back so the hash matches
-    // what Python (or any consumer) will see when reading the WAV file.
-    const quantised = quantiseTo16bit(samples);
+    // Send WAV to backend for processing
+    try {
+        const formData = new FormData();
+        formData.append('audio', currentWavBlob, 'recording.wav');
 
-    // Compute spectral hash on the quantised samples
-    currentHash = computeSpectralHash(quantised);
+        const response = await fetch('http://localhost:8000/api/process-audio/', {
+            method: 'POST',
+            body: formData
+        });
 
-    // ── Display results ──
-    const bucketLen = Math.floor(samples.length / NUM_BUCKETS);
-    hashDisplay.textContent   = currentHash;
-    hashLengthEl.textContent  = currentHash.length;
-    bucketCountEl.textContent = NUM_BUCKETS;
-    bucketSizeEl.textContent  = bucketLen + ' (~' + Math.round(bucketLen / recSampleRate * 1000) + ' ms)';
-    sampleRateEl.textContent  = recSampleRate;
-    resultSection.classList.remove('hidden');
-    btnWav.disabled  = false;
-    btnHash.disabled = false;
-
-    // Draw static waveform of the recording
-    drawStaticWaveform(samples);
-}
-
-// ─── Spectral hash: split → window → FFT → centroid → char ─
-//
-//  Fixed NUM_BUCKETS → fixed-length hash.
-//  Locality-sensitive: similar sounds → same or neighbouring chars.
-//  Uses the *spectral centroid* (centre of mass of the frequency
-//  spectrum) mapped logarithmically onto the CHARSET.
-//
-function computeSpectralHash(samples) {
-    const bucketLen = Math.floor(samples.length / NUM_BUCKETS);
-    const halfN     = FFT_SIZE / 2;
-    const logMin    = Math.log(FREQ_MIN);
-    const logMax    = Math.log(FREQ_MAX);
-    let hash = '';
-
-    for (let i = 0; i < NUM_BUCKETS; i++) {
-        const start = i * bucketLen;
-        const end   = Math.min(start + bucketLen, samples.length);
-        const chunk = samples.subarray(start, end);
-
-        // ── Silence check (RMS over the raw chunk) ──
-        let sumSq = 0;
-        for (let j = 0; j < chunk.length; j++) sumSq += chunk[j] * chunk[j];
-        if (Math.sqrt(sumSq / chunk.length) < SILENCE_RMS) {
-            hash += SILENCE_CHAR;
-            continue;
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Server error');
         }
 
-        // ── Prepare FFT input: Hann-window then zero-pad / truncate to FFT_SIZE ──
-        const re  = new Float64Array(FFT_SIZE);   // zero-initialised
-        const im  = new Float64Array(FFT_SIZE);
-        const win = Math.min(chunk.length, FFT_SIZE);
-        for (let j = 0; j < win; j++) {
-            re[j] = chunk[j] * 0.5 * (1 - Math.cos(2 * Math.PI * j / (win - 1)));
-        }
+        const result = await response.json();
+        currentHash = result.hash;
 
-        // ── FFT (in-place Cooley-Tukey radix-2) ──
-        fft(re, im);
+        // ── Display results ──
+        const bucketLen = Math.floor(samples.length / NUM_BUCKETS);
+        hashDisplay.textContent   = currentHash;
+        hashLengthEl.textContent  = result.hashLength;
+        bucketCountEl.textContent = NUM_BUCKETS;
+        bucketSizeEl.textContent  = bucketLen + ' (~' + Math.round(bucketLen / recSampleRate * 1000) + ' ms)';
+        sampleRateEl.textContent  = result.sampleRate;
+        resultSection.classList.remove('hidden');
+        btnWav.disabled  = false;
+        btnHash.disabled = false;
 
-        // ── Compute spectral centroid (power-weighted mean frequency) ──
-        let weightedSum = 0;
-        let magSum      = 0;
-        for (let j = 1; j < halfN; j++) {
-            const mag = re[j] * re[j] + im[j] * im[j];  // power
-            const freqHz = j * (recSampleRate / FFT_SIZE);
-            weightedSum += freqHz * mag;
-            magSum      += mag;
-        }
+        // Draw static waveform of the recording
+        drawStaticWaveform(samples);
 
-        if (magSum === 0) { hash += SILENCE_CHAR; continue; }
-
-        // ── Spectral centroid in Hz ──
-        const centroid = weightedSum / magSum;
-
-        // ── Map centroid → character (log scale, clamped) ──
-        const logCentroid = Math.log(Math.max(FREQ_MIN, Math.min(FREQ_MAX, centroid)));
-        const t = (logCentroid - logMin) / (logMax - logMin);  // 0..1
-        const idx = Math.min(CHARSET.length - 1, Math.max(0, Math.floor(t * CHARSET.length)));
-        hash += CHARSET[idx];
-    }
-
-    return hash;
-}
-
-// ═════════════════════════════════════════════════════════
-//  Cooley-Tukey Radix-2 FFT  (in-place, complex)
-// ═════════════════════════════════════════════════════════
-
-function fft(re, im) {
-    const N = re.length;
-
-    // Bit-reversal permutation
-    for (let i = 1, j = 0; i < N; i++) {
-        let bit = N >> 1;
-        for (; j & bit; bit >>= 1) j ^= bit;
-        j ^= bit;
-        if (i < j) {
-            [re[i], re[j]] = [re[j], re[i]];
-            [im[i], im[j]] = [im[j], im[i]];
-        }
-    }
-
-    // Butterfly stages
-    for (let len = 2; len <= N; len *= 2) {
-        const ang = -2 * Math.PI / len;
-        const wRe = Math.cos(ang);
-        const wIm = Math.sin(ang);
-        for (let i = 0; i < N; i += len) {
-            let curRe = 1, curIm = 0;
-            for (let j = 0; j < len / 2; j++) {
-                const a = i + j;
-                const b = a + len / 2;
-                const tRe = re[b] * curRe - im[b] * curIm;
-                const tIm = re[b] * curIm + im[b] * curRe;
-                re[b] = re[a] - tRe;
-                im[b] = im[a] - tIm;
-                re[a] += tRe;
-                im[a] += tIm;
-                const tmp = curRe * wRe - curIm * wIm;
-                curIm     = curRe * wIm + curIm * wRe;
-                curRe     = tmp;
-            }
-        }
+    } catch (error) {
+        console.error('Error processing audio:', error);
+        showError('Error processing audio: ' + error.message);
+        drawIdleLine();
     }
 }
 
@@ -380,22 +292,6 @@ function drawStaticWaveform(samples) {
         ctx.lineTo(i, amp + max * amp);
     }
     ctx.stroke();
-}
-
-// ═════════════════════════════════════════════════════════
-//  16-bit quantise (round-trip so hash matches the WAV)
-// ═════════════════════════════════════════════════════════
-
-function quantiseTo16bit(samples) {
-    const out = new Float32Array(samples.length);
-    for (let i = 0; i < samples.length; i++) {
-        let s = Math.max(-1, Math.min(1, samples[i]));
-        // Float → Int16 (same formula as the WAV encoder)
-        const int16 = (s < 0 ? s * 0x8000 : s * 0x7FFF) | 0;
-        // Int16 → Float (same formula as Python's WAV reader)
-        out[i] = int16 / 32768.0;
-    }
-    return out;
 }
 
 // ═════════════════════════════════════════════════════════
