@@ -154,7 +154,7 @@ async function startRecording() {
     voiceDetected = false;
     voiceSampleCount = 0;
     const targetSamples = MAX_DURATION_S * recSampleRate;
-    const VOICE_RMS_THRESHOLD = 0.03;  // RMS level that counts as "voice started"
+    const VOICE_RMS_THRESHOLD = 0.015;  // RMS level that counts as "voice started"
 
     processorNode.onaudioprocess = (e) => {
         if (!recording) return;
@@ -477,7 +477,7 @@ function drawStaticWaveform(samples) {
 //  Silence Trimmer  (matches librosa.effects.trim top_db=30)
 // ═════════════════════════════════════════════════════════
 
-function trimSilence(samples, sampleRate, topDb = 20) {
+function trimSilence(samples, sampleRate, topDb = 35) {
     // Compute RMS in short frames and find where it exceeds the threshold
     const frameLen = Math.floor(sampleRate * 0.02);  // 20ms frames
     const hop      = Math.floor(frameLen / 2);        // 50% overlap

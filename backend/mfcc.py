@@ -14,7 +14,7 @@ EPS = 1e-8
 
 def load_and_normalize(path):
     y, sr = librosa.load(path, sr=SR)
-    y, _ = librosa.effects.trim(y, top_db=30)
+    y, _ = librosa.effects.trim(y, top_db=40)
     y = y.astype(np.float32)
     y /= np.sqrt(np.mean(y**2) + EPS)
     return y, sr
