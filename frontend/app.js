@@ -41,6 +41,7 @@ let currentMode    = null;        // 'record' or 'authenticate'
 let awaitingUsername = false;      // waiting for username entry
 let voiceDetected  = false;       // has voice crossed the RMS threshold?
 let voiceSampleCount = 0;         // samples captured since voice detected
+let aboutLoaded    = false;
 
 // ─── DOM refs ────────────────────────────────────────────
 const canvas        = document.getElementById('waveform');
@@ -62,6 +63,7 @@ const usernameInput = document.getElementById('username-input');
 const btnUsernameEnter = document.getElementById('btn-username-enter');
 const authResultSection = document.getElementById('auth-result-section');
 const authScoreDisplay  = document.getElementById('auth-score-display');
+const aboutContentEl    = document.getElementById('about-content');
 
 // ─── Button event listeners ──────────────────────────────
 btnRecord.addEventListener('click', () => {
@@ -111,6 +113,101 @@ drawIdleLine();
 function showError(msg) {
     hashDisplay.textContent   = msg;
     resultSection.classList.remove('hidden');
+}
+
+// ═════════════════════════════════════════════════════════
+//  About Tab Markdown Loader
+// ═════════════════════════════════════════════════════════
+
+function escapeHtml(str) {
+    return str
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+}
+
+function formatInlineMarkdown(text) {
+    let formatted = escapeHtml(text);
+    formatted = formatted.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    formatted = formatted.replace(/`(.+?)`/g, '<code>$1</code>');
+    formatted = formatted.replace(/\[(.+?)\]\((https?:[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+    return formatted;
+}
+
+function markdownToHtml(markdown) {
+    const lines = markdown.split(/\r?\n/);
+    let html = '';
+    let inList = false;
+
+    const closeList = () => {
+        if (inList) {
+            html += '</ul>';
+            inList = false;
+        }
+    };
+
+    for (const rawLine of lines) {
+        const line = rawLine.trim();
+        if (!line) {
+            closeList();
+            continue;
+        }
+
+        if (line.startsWith('### ')) {
+            closeList();
+            html += `<h3>${formatInlineMarkdown(line.slice(4))}</h3>`;
+            continue;
+        }
+
+        if (line.startsWith('## ')) {
+            closeList();
+            html += `<h2>${formatInlineMarkdown(line.slice(3))}</h2>`;
+            continue;
+        }
+
+        if (line.startsWith('# ')) {
+            closeList();
+            html += `<h1>${formatInlineMarkdown(line.slice(2))}</h1>`;
+            continue;
+        }
+
+        if (line.startsWith('- ')) {
+            if (!inList) {
+                html += '<ul>';
+                inList = true;
+            }
+            html += `<li>${formatInlineMarkdown(line.slice(2))}</li>`;
+            continue;
+        }
+
+        closeList();
+        html += `<p>${formatInlineMarkdown(line)}</p>`;
+    }
+
+    closeList();
+    return html;
+}
+
+async function loadAboutContent() {
+    if (aboutLoaded || !aboutContentEl) return;
+    try {
+        const response = await fetch('http://localhost:8000/api/about/', { cache: 'no-cache' });
+        if (!response.ok) throw new Error(`status ${response.status}`);
+        const payload = await response.json();
+        if (!payload || typeof payload.content !== 'string') {
+            throw new Error('invalid payload');
+        }
+        aboutContentEl.innerHTML = markdownToHtml(payload.content);
+        aboutLoaded = true;
+        if (window.MathJax && typeof window.MathJax.typesetPromise === 'function') {
+            window.MathJax.typesetPromise([aboutContentEl]).catch(err => {
+                console.error('MathJax render error:', err);
+            });
+        }
+    } catch (error) {
+        console.error('Error loading about content:', error);
+        aboutContentEl.innerHTML = '<p class="about-error">could not load about page.</p>';
+    }
 }
 
 // ═════════════════════════════════════════════════════════
@@ -737,6 +834,8 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
             captchaDrawIdle(captchaResponseCtx, captchaResponseCanvas);
             if (captchaChallengeSamples) captchaDrawStatic(captchaChallengeCtx, captchaChallengeCanvas, captchaChallengeSamples);
             if (captchaResponseSamples)  captchaDrawStatic(captchaResponseCtx, captchaResponseCanvas, captchaResponseSamples);
+        } else if (btn.dataset.tab === 'about') {
+            loadAboutContent();
         } else {
             resizeCanvas();
             drawIdleLine();

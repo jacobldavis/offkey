@@ -5,6 +5,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>offkey</title>
     <link rel="stylesheet" href="style.css">
+    <script>
+        window.MathJax = {
+            tex: {
+                inlineMath: [['$', '$'], ['\\(', '\\)']],
+                displayMath: [['$$', '$$'], ['\\[', '\\]']]
+            }
+        };
+    </script>
+    <script defer src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
 </head>
 <body>
 
@@ -16,6 +25,7 @@
     <nav class="tab-bar">
         <button class="tab-btn active" data-tab="voiceprint">voiceprint</button>
         <button class="tab-btn" data-tab="captcha">audio captcha</button>
+        <button class="tab-btn" data-tab="about">about</button>
     </nav>
 
     <main>
@@ -88,6 +98,15 @@
             <div id="captcha-result-section" class="card hidden">
                 <p class="result-label">captcha result</p>
                 <div id="captcha-score-display"></div>
+            </div>
+        </div>
+
+        <!-- ═══ About Tab ═══ -->
+        <div id="tab-about" class="tab-panel">
+            <div class="card about-card">
+                <div id="about-content" class="about-content">
+                    <p class="result-label">summoning grimoire&hellip;</p>
+                </div>
             </div>
         </div>
     </main>

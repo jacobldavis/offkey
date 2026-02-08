@@ -578,6 +578,74 @@ button.small {
     color: #8a4a4a !important;
 }
 
+/* ── about tab ───────────── */
+.about-card {
+    padding-top: 12px;
+}
+
+.about-content {
+    color: #5c4f3d;
+    line-height: 1.7;
+}
+
+.about-content h1 {
+    font-size: 28px;
+    font-style: italic;
+    font-weight: normal;
+    letter-spacing: 3px;
+    color: #7a5c3a;
+    margin-bottom: 10px;
+    text-transform: lowercase;
+}
+
+.about-content h2 {
+    font-size: 18px;
+    font-style: italic;
+    font-weight: normal;
+    color: #7a5c3a;
+    margin: 22px 0 10px;
+    letter-spacing: 1px;
+}
+
+.about-content h3 {
+    font-size: 16px;
+    font-style: italic;
+    font-weight: normal;
+    color: #7a5c3a;
+    margin: 18px 0 8px;
+}
+
+.about-content p {
+    margin: 12px 0;
+}
+
+.about-content ul {
+    margin: 12px 0 12px 24px;
+    padding: 0;
+    list-style: square;
+}
+
+.about-content li {
+    margin-bottom: 8px;
+}
+
+.about-content a {
+    color: #6b5c3d;
+    text-decoration: underline;
+}
+
+.about-content code {
+    font-family: 'Courier New', Courier, monospace;
+    background: rgba(232, 214, 168, 0.5);
+    padding: 0 4px;
+    border-radius: 4px;
+}
+
+.about-content .about-error {
+    color: #8a4a3a;
+    font-style: italic;
+}
+
 /* ── cursor sparks ─────────── */
 .cursor-spark {
     position: absolute;
