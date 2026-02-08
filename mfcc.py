@@ -65,8 +65,8 @@ def build_embeddings(path):
     return {
         "cepstrum": (cep, 0.00),
         "harmonics": (harm, 0.00),
-        "voice_shape": (mfcc_mean, 0.0),
-        "pitch": (pitch, 1.0)
+        "voice_shape": (mfcc_mean, 0.1),
+        "pitch": (pitch, 0.0)
     }
 
 
