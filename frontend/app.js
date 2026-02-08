@@ -37,11 +37,14 @@ let recSampleRate = 44100;
 
 let currentHash    = '';
 let currentWavBlob = null;
+let currentMode    = null;        // 'record' or 'authenticate'
+let awaitingUsername = false;      // waiting for username entry
 
 // ─── DOM refs ────────────────────────────────────────────
 const canvas        = document.getElementById('waveform');
 const ctx           = canvas.getContext('2d');
 const btnRecord     = document.getElementById('btn-record');
+const btnAuth       = document.getElementById('btn-authenticate');
 const btnWav        = document.getElementById('btn-save-wav');
 const btnHash       = document.getElementById('btn-save-hash');
 const btnPlayback   = document.getElementById('btn-playback');
@@ -53,17 +56,39 @@ const hashLengthEl  = document.getElementById('hash-length');
 const bucketCountEl = document.getElementById('bucket-count');
 const bucketSizeEl  = document.getElementById('bucket-size');
 const sampleRateEl  = document.getElementById('sample-rate');
+const usernameInput = document.getElementById('username-input');
+const btnUsernameEnter = document.getElementById('btn-username-enter');
+const authResultSection = document.getElementById('auth-result-section');
+const authScoreDisplay  = document.getElementById('auth-score-display');
 
 // ─── Button event listeners ──────────────────────────────
 btnRecord.addEventListener('click', () => {
+    if (awaitingUsername) return;
+    currentMode = 'record';
     toggleRecording().catch(err => {
         console.error('toggleRecording error:', err);
         showError('error: ' + err.message);
     });
 });
+
+btnAuth.addEventListener('click', () => {
+    if (awaitingUsername) return;
+    currentMode = 'authenticate';
+    toggleRecording().catch(err => {
+        console.error('toggleRecording error:', err);
+        showError('error: ' + err.message);
+    });
+});
+
 btnWav.addEventListener('click',  () => saveWAV());
 btnHash.addEventListener('click', () => saveHash());
 btnPlayback.addEventListener('click', () => playRecording());
+
+// Username submit handler
+btnUsernameEnter.addEventListener('click', () => submitUsername());
+usernameInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') submitUsername();
+});
 
 // Draw an idle flat-line on the canvas at load
 function resizeCanvas() {
@@ -143,10 +168,15 @@ async function startRecording() {
     currentWavBlob = null;
 
     // ── UI ──
-    btnRecord.textContent = 'stop';
-    btnRecord.classList.add('recording');
+    const activeBtn = (currentMode === 'authenticate') ? btnAuth : btnRecord;
+    activeBtn.textContent = 'stop';
+    activeBtn.classList.add('recording');
+    // Disable the other button while recording
+    const otherBtn = (currentMode === 'authenticate') ? btnRecord : btnAuth;
+    otherBtn.disabled = true;
     recIndicator.classList.remove('hidden');
     resultSection.classList.add('hidden');
+    authResultSection.classList.add('hidden');
     btnWav.disabled  = true;
     btnHash.disabled = true;
     btnPlayback.disabled = true;
@@ -167,20 +197,14 @@ function stopRecording() {
     if (audioCtx)      { audioCtx.close(); audioCtx = null; }
 
     // ── UI ──
-    btnRecord.textContent = 'record';
-    btnRecord.classList.remove('recording');
+    const activeBtn = (currentMode === 'authenticate') ? btnAuth : btnRecord;
+    activeBtn.textContent = (currentMode === 'authenticate') ? 'authenticate' : 'record';
+    activeBtn.classList.remove('recording');
+    const otherBtn = (currentMode === 'authenticate') ? btnRecord : btnAuth;
+    otherBtn.disabled = false;
     recIndicator.classList.add('hidden');
 
-    // ── Process captured audio ──
-    processAudio();
-}
-
-// ═══════════════════════════════════════════════════════════
-//  Audio Processing  →  Send to Backend for Spectral Hash
-// ═══════════════════════════════════════════════════════════
-
-async function processAudio() {
-    // Merge chunks into one contiguous Float32Array
+    // ── Build WAV blob from captured audio ──
     const totalLen = capturedChunks.reduce((n, c) => n + c.length, 0);
     const samples  = new Float32Array(totalLen);
     let off = 0;
@@ -193,10 +217,119 @@ async function processAudio() {
         return;
     }
 
-    // Build WAV blob
     currentWavBlob = samplesToWav(samples, recSampleRate);
+    drawStaticWaveform(samples);
 
-    // Send WAV to backend for processing
+    // ── Prompt for username ──
+    awaitingUsername = true;
+    usernameInput.value = '';
+    usernameInput.classList.add('prompting');
+    usernameInput.focus();
+    timerEl.textContent = currentMode === 'record'
+        ? 'enter username to save...'
+        : 'enter username to authenticate...';
+}
+
+// ═══════════════════════════════════════════════════════════
+//  Username Submission  →  Save or Authenticate
+// ═══════════════════════════════════════════════════════════
+
+async function submitUsername() {
+    if (!awaitingUsername || !currentWavBlob) return;
+
+    const username = usernameInput.value.trim();
+    if (!username) {
+        usernameInput.focus();
+        return;
+    }
+
+    awaitingUsername = false;
+    usernameInput.classList.remove('prompting');
+    timerEl.textContent = '';
+
+    if (currentMode === 'record') {
+        await saveVoicePrint(username);
+    } else if (currentMode === 'authenticate') {
+        await authenticateVoice(username);
+    }
+}
+
+async function saveVoicePrint(username) {
+    timerEl.textContent = 'saving...';
+    try {
+        const formData = new FormData();
+        formData.append('audio', currentWavBlob, 'recording.wav');
+        formData.append('username', username);
+
+        const response = await fetch('http://localhost:8000/api/register-voice/', {
+            method: 'POST',
+            body: formData
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'server error');
+        }
+
+        const result = await response.json();
+        timerEl.textContent = `saved voice print for "${username}"`;
+
+        // Also process spectral hash for display
+        await processAudio();
+
+    } catch (error) {
+        console.error('Error saving voice print:', error);
+        showError('error saving: ' + error.message);
+    }
+}
+
+async function authenticateVoice(username) {
+    timerEl.textContent = 'authenticating...';
+    try {
+        const formData = new FormData();
+        formData.append('audio', currentWavBlob, 'recording.wav');
+        formData.append('username', username);
+
+        const response = await fetch('http://localhost:8000/api/authenticate-voice/', {
+            method: 'POST',
+            body: formData
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'server error');
+        }
+
+        const result = await response.json();
+
+        // Display auth score
+        if (result.error) {
+            authScoreDisplay.innerHTML = `<span class="score-error">${result.error}</span>`;
+        } else {
+            const score = parseFloat(result.similarity);
+            const pct = (score * 100).toFixed(1);
+            authScoreDisplay.innerHTML =
+                `${pct}%<span class="score-label">similarity to ${username}'s voice print</span>`;
+        }
+        authResultSection.classList.remove('hidden');
+        timerEl.textContent = '';
+
+    } catch (error) {
+        console.error('Error authenticating:', error);
+        authScoreDisplay.innerHTML = `<span class="score-error">error: ${error.message}</span>`;
+        authResultSection.classList.remove('hidden');
+        timerEl.textContent = '';
+    }
+}
+
+// ═══════════════════════════════════════════════════════════
+//  Audio Processing  →  Send to Backend for Spectral Hash
+// ═══════════════════════════════════════════════════════════
+
+async function processAudio() {
+    if (!currentWavBlob) return;
+
+    // Send WAV to backend for spectral hash processing
     try {
         const formData = new FormData();
         formData.append('audio', currentWavBlob, 'recording.wav');
@@ -215,19 +348,14 @@ async function processAudio() {
         currentHash = result.hash;
 
         // ── Display results ──
-        const bucketLen = Math.floor(samples.length / NUM_BUCKETS);
         hashDisplay.textContent   = currentHash;
         hashLengthEl.textContent  = result.hashLength;
         bucketCountEl.textContent = NUM_BUCKETS;
-        bucketSizeEl.textContent  = bucketLen + ' (~' + Math.round(bucketLen / recSampleRate * 1000) + ' ms)';
         sampleRateEl.textContent  = result.sampleRate;
         resultSection.classList.remove('hidden');
         btnWav.disabled  = false;
         btnHash.disabled = false;
         btnPlayback.disabled = false;
-
-        // Draw static waveform of the recording
-        drawStaticWaveform(samples);
 
     } catch (error) {
         console.error('Error processing audio:', error);

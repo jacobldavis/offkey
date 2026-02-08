@@ -195,9 +195,92 @@ button:disabled {
         1px 2px 2px rgba(92, 79, 61, 0.15);
 }
 
+/* ── username row ──────────── */
+.username-row {
+    display: flex;
+    gap: 0;
+    margin-bottom: 12px;
+    align-items: stretch;
+}
+
+#username-input {
+    flex: 1;
+    font-family: Georgia, 'Times New Roman', serif;
+    font-size: 15px;
+    font-style: italic;
+    padding: 10px 14px;
+    background: rgba(232, 214, 168, 0.5);
+    color: #5c4f3d;
+    border: 1px solid #c8b080;
+    border-right: none;
+    border-radius: 6px 0 0 6px;
+    outline: none;
+    letter-spacing: 1px;
+}
+
+#username-input::placeholder {
+    color: #b8a890;
+    font-style: italic;
+}
+
+#username-input:focus {
+    background: rgba(232, 214, 168, 0.8);
+    border-color: #a89880;
+}
+
+#username-input.prompting {
+    border-color: #7a5c3a;
+    background: rgba(232, 214, 168, 0.9);
+    animation: pulse-border 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse-border {
+    0%, 100% { border-color: #7a5c3a; }
+    50% { border-color: #553c6b; }
+}
+
+.username-enter {
+    font-family: Georgia, 'Times New Roman', serif;
+    font-size: 20px !important;
+    font-style: normal !important;
+    padding: 10px 16px !important;
+    background: linear-gradient(to right, #6b5842, #8a7259, #6b5842) !important;
+    color: #d4c4a8;
+    border: 1px solid #c8b080 !important;
+    border-left: none !important;
+    border-radius: 0 6px 6px 0 !important;
+    cursor: pointer;
+    clip-path: none !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+    letter-spacing: 0 !important;
+    text-transform: none !important;
+    line-height: 1;
+    transition: background 0.2s;
+}
+
+.username-enter::before,
+.username-enter::after {
+    display: none !important;
+}
+
+.username-enter:hover {
+    background: linear-gradient(to right, #7a6249, #9a8269, #7a6249) !important;
+    transform: none !important;
+}
+
+/* ── button row ───────────── */
+.button-row {
+    display: flex;
+    gap: 10px;
+}
+
+.button-row button {
+    flex: 1;
+}
+
 #btn-record {
     display: block;
-    width: 100%;
     font-size: 17px;
     padding: 14px;
     letter-spacing: 2px;
@@ -362,6 +445,75 @@ button.small {
 
 .hash-info summary:hover {
     color: #a89880;
+}
+
+/* ── authenticate button ──── */
+#btn-authenticate {
+    display: block;
+    font-size: 17px;
+    padding: 14px;
+    letter-spacing: 2px;
+    background: linear-gradient(to right, 
+        #2a3d4a 0%, 
+        #3c5566 7%, 
+        #344858 14%, 
+        #3c5566 21%, 
+        #344858 50%, 
+        #3c5566 79%, 
+        #344858 86%, 
+        #3c5566 93%, 
+        #2a3d4a 100%
+    );
+    color: #b8d0d4;
+    clip-path: polygon(
+        3% 0.8%, 25% 0.2%, 50% 0%, 75% 0.3%, 97% 0.7%,
+        99.8% 25%, 100% 75%, 99.6% 99.2%,
+        75% 99.5%, 50% 100%, 25% 99.6%, 2% 99.3%,
+        0.2% 75%, 0% 25%
+    );
+}
+
+#btn-authenticate.recording {
+    background: linear-gradient(to right, 
+        #3a5060 0%, 
+        #4c6a7a 7%, 
+        #425868 14%, 
+        #4c6a7a 21%, 
+        #425868 50%, 
+        #4c6a7a 79%, 
+        #425868 86%, 
+        #4c6a7a 93%, 
+        #3a5060 100%
+    );
+    color: #d8e8ec;
+}
+
+/* ── auth result ─────────── */
+#auth-score-display {
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 36px;
+    font-weight: bold;
+    text-align: center;
+    padding: 20px;
+    color: #5a3d2a;
+    line-height: 1.4;
+}
+
+#auth-score-display .score-label {
+    font-family: Georgia, 'Times New Roman', serif;
+    font-size: 13px;
+    font-weight: normal;
+    font-style: italic;
+    color: #a89880;
+    display: block;
+    margin-top: 8px;
+}
+
+#auth-score-display .score-error {
+    font-family: Georgia, 'Times New Roman', serif;
+    font-size: 15px;
+    font-weight: normal;
+    color: #8a4a3a;
 }
 
 /* ── cursor sparks ─────────── */

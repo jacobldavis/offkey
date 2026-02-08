@@ -3,6 +3,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.fft import rfft, irfft
 from scipy.spatial.distance import cosine, euclidean
+from scipy.optimize import minimize
+
 
 SR = None
 N_FFT = 2048
@@ -52,27 +54,46 @@ def get_pitch_features(y, sr):
     pitch_val = np.mean(pitches[pitches > 0]) 
     return pitch_val
 
+def get_anatomy_features(y, sr):
+    centroid = librosa.feature.spectral_centroid(y=y, sr=sr)
+    
+    bandwidth = librosa.feature.spectral_bandwidth(y=y, sr=sr)
+    
+    lpc_coeffs = librosa.lpc(y, order=16)
+    
+    return {
+        "brightness": np.mean(centroid),
+        "richness": np.mean(bandwidth),
+        "vocal_tract": lpc_coeffs
+    }
+
+def get_pitch_stats(y, sr):
+    pitches, magnitudes = librosa.piptrack(y=y, sr=sr)
+    valid_pitches = pitches[pitches > 0]
+    if len(valid_pitches) == 0: return 0, 0
+    
+    return np.mean(valid_pitches), np.std(valid_pitches)
+
 def build_embeddings(path):
     y, sr = load_and_normalize(path)
-
-    cep = cepstral_embedding(y, sr)
-    harm = harmonic_features(y, sr)
-
-    mfccs = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=23)
-    mfcc_mean = np.mean(mfccs, axis=1) 
-    pitch = get_pitch_features(y, sr)
+    
+    mfccs = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=20)
+    
+    anatomy = get_anatomy_features(y, sr)
+    p_mean, p_std = get_pitch_stats(y, sr)
 
     return {
-        "cepstrum": (cep, 0.00),
-        "harmonics": (harm, 0.00),
-        "voice_shape": (mfcc_mean, 0.1),
-        "pitch": (pitch, 0.0)
+        "voice_shape": (np.mean(mfccs, axis=1), 0.0047), 
+        "vocal_tract": (anatomy['vocal_tract'], 0.0), 
+        "pitch_avg": (p_mean, 0.0569), 
+        "pitch_std": (p_std, 0.5589),  
+        "brightness": (anatomy['brightness'], 0.378)
     }
 
 
 def compare_files(path1, path2):
-    path1 = f"recording_{path1}.wav"
-    path2 = f"recording_{path2}.wav"
+    path1 = f"{path1}.wav"
+    path2 = f"{path2}.wav"
 
     emb1 = build_embeddings(path1)
     emb2 = build_embeddings(path2)
@@ -99,7 +120,8 @@ def compare_files(path1, path2):
 
 # compare j1, j2, r1, r2, t1, t2 via a matrix
 def compare_all():
-    names = ['j1', 'j2', 'r1', 'r2', 't1', 't2']
+    # names = ['j1', 'j2', 'r1', 'r2', 't1', 't2']
+    names = ["whistle_diff", "whistle_same_1", "whistle_same_2", "whistle_varied", "blueberrypancake", "recording_t1", "recording_j1"]
     matrix = np.zeros((len(names), len(names)))
 
     for i, name1 in enumerate(names):
@@ -134,28 +156,34 @@ if __name__ == "__main__":
     print("\n" + "=" * 60)
     print("Analysis:")
     
-    # Within-speaker comparisons
-    print("\nWithin-speaker similarities:")
-    print(f"  j1 vs j2: {matrix[0, 1]:.4f}")
-    print(f"  r1 vs r2: {matrix[2, 3]:.4f}")
-    print(f"  t1 vs t2: {matrix[4, 5]:.4f}")
+    # Find pairs of similar recordings (high similarity, not diagonal)
+    print("\nTop similar pairs (excluding self-comparison):")
+    similarities = []
+    for i in range(len(names)):
+        for j in range(i+1, len(names)):
+            similarities.append((names[i], names[j], matrix[i, j]))
     
-    # Cross-speaker comparisons (sample)
-    print("\nCross-speaker similarities (examples):")
-    print(f"  j1 vs r1: {matrix[0, 2]:.4f}")
-    print(f"  j1 vs t1: {matrix[0, 4]:.4f}")
-    print(f"  r1 vs t1: {matrix[2, 4]:.4f}")
+    # Sort by similarity (descending)
+    similarities.sort(key=lambda x: x[2], reverse=True)
+    
+    # Show top 5
+    for idx, (name1, name2, sim) in enumerate(similarities[:5], 1):
+        print(f"  {idx}. {name1} vs {name2}: {sim:.4f}")
+    
+    print("\nLeast similar pairs:")
+    for idx, (name1, name2, sim) in enumerate(similarities[-5:], 1):
+        print(f"  {idx}. {name1} vs {name2}: {sim:.4f}")
     
     # Visualize with matplotlib
-    plt.figure(figsize=(10, 8))
+    plt.figure(figsize=(12, 10))
     im = plt.imshow(matrix, cmap='RdYlGn', aspect='auto', vmin=0, vmax=1)
     
     # Add colorbar
     cbar = plt.colorbar(im, label='Similarity Score')
     
     # Set ticks and labels
-    plt.xticks(range(len(names)), names, fontsize=12)
-    plt.yticks(range(len(names)), names, fontsize=12)
+    plt.xticks(range(len(names)), names, fontsize=9, rotation=45, ha='right')
+    plt.yticks(range(len(names)), names, fontsize=9)
     
     # Add values in cells
     for i in range(len(names)):

@@ -3,10 +3,15 @@ from django.views.decorators.csrf import csrf_exempt
 import io
 import sys
 import os
+import tempfile
 
-# Add parent directory to path to import main.py
+# Add parent directory to path to import main.py and mfcc.py
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from main import compute_spectral_hash
+from mfcc import compare_files
+
+# Directory where voice prints are stored
+VOICE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def api_info(request):
@@ -23,6 +28,18 @@ def api_info(request):
                 'description': 'Process WAV file and return spectral hash',
                 'accepts': 'multipart/form-data (audio field)',
                 'returns': 'JSON with hash and metadata'
+            },
+            '/api/register-voice/': {
+                'method': 'POST',
+                'description': 'Save a voice print WAV for a username',
+                'accepts': 'multipart/form-data (audio + username)',
+                'returns': 'JSON confirmation'
+            },
+            '/api/authenticate-voice/': {
+                'method': 'POST',
+                'description': 'Compare audio against a stored voice print',
+                'accepts': 'multipart/form-data (audio + username)',
+                'returns': 'JSON with similarity score (0-1)'
             }
         },
         'frontend': 'http://localhost:3000',
@@ -54,4 +71,90 @@ def process_audio(request):
         return JsonResponse(result)
     
     except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+
+@csrf_exempt
+def register_voice(request):
+    """
+    Save a voice print WAV file for a given username.
+    Stores as backend/<username>.wav
+    """
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST method required'}, status=405)
+
+    if 'audio' not in request.FILES:
+        return JsonResponse({'error': 'No audio file provided'}, status=400)
+
+    username = request.POST.get('username', '').strip()
+    if not username:
+        return JsonResponse({'error': 'No username provided'}, status=400)
+
+    try:
+        wav_file = request.FILES['audio']
+        save_path = os.path.join(VOICE_DIR, f'{username}.wav')
+        with open(save_path, 'wb') as f:
+            for chunk in wav_file.chunks():
+                f.write(chunk)
+
+        return JsonResponse({
+            'status': 'ok',
+            'username': username,
+            'message': f'Voice print saved for {username}'
+        })
+
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+
+@csrf_exempt
+def authenticate_voice(request):
+    """
+    Compare uploaded audio against a stored voice print for a username.
+    Uses compare_files() from mfcc.py.
+    """
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST method required'}, status=405)
+
+    if 'audio' not in request.FILES:
+        return JsonResponse({'error': 'No audio file provided'}, status=400)
+
+    username = request.POST.get('username', '').strip()
+    if not username:
+        return JsonResponse({'error': 'No username provided'}, status=400)
+
+    stored_path = os.path.join(VOICE_DIR, f'{username}.wav')
+    if not os.path.exists(stored_path):
+        return JsonResponse({
+            'error': f'No voice print found for "{username}". Record one first.'
+        }, status=404)
+
+    try:
+        # Save incoming audio to a temp file for comparison
+        wav_file = request.FILES['audio']
+        tmp_path = os.path.join(VOICE_DIR, f'_tmp_auth_{username}.wav')
+        with open(tmp_path, 'wb') as f:
+            for chunk in wav_file.chunks():
+                f.write(chunk)
+
+        # compare_files expects paths without .wav extension
+        stored_name = os.path.join(VOICE_DIR, username)
+        tmp_name = os.path.join(VOICE_DIR, f'_tmp_auth_{username}')
+
+        similarity = compare_files(stored_name, tmp_name)
+
+        # Clean up temp file
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+
+        return JsonResponse({
+            'similarity': float(similarity),
+            'username': username
+        })
+
+    except Exception as e:
+        # Clean up temp file on error
+        tmp_path = os.path.join(VOICE_DIR, f'_tmp_auth_{username}.wav')
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
         return JsonResponse({'error': str(e)}, status=500)

@@ -17,7 +17,15 @@
         <div class="card">
             <canvas id="waveform" width="640" height="100"></canvas>
 
-            <button id="btn-record">record</button>
+            <div class="username-row">
+                <input type="text" id="username-input" placeholder="enter username..." />
+                <button id="btn-username-enter" class="username-enter" title="Submit">&crarr;</button>
+            </div>
+
+            <div class="button-row">
+                <button id="btn-record">record</button>
+                <button id="btn-authenticate">authenticate</button>
+            </div>
 
             <div id="status">
                 <span id="rec-indicator" class="hidden">listening&hellip;</span>
@@ -37,6 +45,11 @@
                 <summary><span id="hash-length">0</span> chars &middot; <span id="bucket-count">0</span> buckets</summary>
                 <span id="bucket-size">2048</span> samples/bucket &middot; <span id="sample-rate">&mdash;</span> hz
             </details>
+        </div>
+
+        <div id="auth-result-section" class="card hidden">
+            <p class="result-label">authentication result</p>
+            <div id="auth-score-display"></div>
         </div>
     </main>
 
