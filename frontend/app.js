@@ -755,6 +755,8 @@ const captchaResponseCtx      = captchaResponseCanvas.getContext('2d');
 const btnCaptchaGenerate      = document.getElementById('btn-captcha-generate');
 const btnCaptchaPlay          = document.getElementById('btn-captcha-play');
 const btnCaptchaRecord        = document.getElementById('btn-captcha-record');
+const btnCaptchaSaveChallenge  = document.getElementById('btn-captcha-save-challenge');
+const btnCaptchaSaveResponse   = document.getElementById('btn-captcha-save-response');
 const captchaRecIndicator     = document.getElementById('captcha-rec-indicator');
 const captchaTimerEl          = document.getElementById('captcha-timer');
 const captchaResultSection    = document.getElementById('captcha-result-section');
@@ -768,6 +770,7 @@ let captchaTapTimes       = [];   // onset times in seconds for the challenge
 let captchaChallengeSamples = null;
 let captchaChallengeBlob  = null;
 let captchaResponseSamples = null;
+let captchaResponseBlob   = null;
 let captchaRecording      = false;
 let captchaAudioCtx       = null;
 let captchaMediaStream    = null;
@@ -874,6 +877,8 @@ function generateTapPattern() {
 
     btnCaptchaPlay.disabled   = false;
     btnCaptchaRecord.disabled = false;
+    btnCaptchaSaveChallenge.disabled = false;
+    btnCaptchaSaveResponse.disabled  = true;
 }
 
 // ─── Play challenge audio ────────────────────────────────
@@ -976,6 +981,8 @@ function stopCaptchaRecording() {
     }
 
     captchaResponseSamples = samples;
+    captchaResponseBlob = captchaSamplesToWav(samples, sr);
+    btnCaptchaSaveResponse.disabled = false;
     captchaDrawStatic(captchaResponseCtx, captchaResponseCanvas, samples);
 
     // Compare patterns
@@ -1168,4 +1175,12 @@ btnCaptchaRecord.addEventListener('click', () => {
         console.error('captcha recording error:', err);
         captchaTimerEl.textContent = 'error: ' + err.message;
     });
+});
+btnCaptchaSaveChallenge.addEventListener('click', () => {
+    if (!captchaChallengeBlob) return;
+    download(captchaChallengeBlob, 'captcha_challenge.wav');
+});
+btnCaptchaSaveResponse.addEventListener('click', () => {
+    if (!captchaResponseBlob) return;
+    download(captchaResponseBlob, 'captcha_response.wav');
 });
